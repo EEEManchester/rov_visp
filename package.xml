@@ -1,0 +1,24 @@
+<package format="2">
+  <name>rov_visp</name>
+  <version>1.0.0</version>
+  <description>
+    Visual servo for underwater ROV.
+  </description>
+
+  <maintainer email="wei.cheah@outlook.com">Wei Cheah</maintainer>
+  <author email="wei.cheah@outlook.com">Wei Cheah</author>
+
+  <license>GPLv2</license>
+
+  <buildtool_depend>catkin</buildtool_depend>
+  
+  <depend>roscpp</depend>
+  <depend>geometry_msgs</depend>
+  <depend>image_transport</depend>
+  <depend>cv_bridge</depend>
+  <depend>visp_bridge</depend>
+  <depend>tf</depend>
+  <depend>tf2_ros</depend>
+  <depend>tf_conversions</depend>
+  
+</package>

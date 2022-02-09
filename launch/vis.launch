@@ -1,0 +1,9 @@
+<launch>
+
+  <node pkg="tf" type="static_transform_publisher" name="fake_base_camera" args="0.000100283301435 0.0590838380158 0 0 -0.7071068 0 0.7071068 /fake_base_link /camera_link 100" />
+  
+  <node pkg="simple_vis" type="main" name="vis_node" output="screen">
+    <remap from="/robot/cmd_vel" to="/mirrax/sim_cmd_vel"/>
+  </node>
+
+</launch>
