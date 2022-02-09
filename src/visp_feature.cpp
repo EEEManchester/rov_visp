@@ -79,8 +79,9 @@ VIS::VIS() :
                           &VIS::imageCallback, this,
                           image_transport::TransportHints(transport_hint));
 
-  detector_.setAprilTagQuadDecimate(4.0);
-  detector_.setAprilTagNbThreads(4);
+  detector_.setAprilTagQuadDecimate(1.0); // default: 1.0
+  detector_.setAprilTagNbThreads(2);    // default: 2
+  detector_.setAprilTagRefineEdges(1);  // default: 1
   detector_.setDisplayTag(true);
 
   // controller_timer_ = nh_.createTimer(
