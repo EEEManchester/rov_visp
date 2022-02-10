@@ -1,11 +1,14 @@
 <launch>
 
-  <!-- <node pkg="tf" type="static_transform_publisher" name="fake_base_camera" args="0.000100283301435 0.0590838380158 0 0 -0.7071068 0 0.7071068 /fake_base_link /camera_link 100" /> -->
-
+  <!-- robot namespace -->
+  <arg name="robot" default="/bluerov"/>
+  <arg name="base_link"   default="$(arg robot)_base"/>
+  <arg name="camera_link" default="$(arg robot)_camera"/>
+  
   <!-- Publisher and subscribers -->
-  <arg name="camera_name" default="/bluerov/vertical_camera" />
+  <arg name="camera_name" default="/vertical_camera" />
   <arg name="image_topic" default="image_raw" />
-  <arg name="twist_topic" default="/bluerov/twist"/>
+  <!-- <arg name="twist_topic" default="/bluerov/twist"/> -->
 
   <!-- Visual servo controller parameters -->
   <arg name="vs_lambda" default="5.0"/>
@@ -23,20 +26,28 @@
   <arg name="display_tagID" default="true"/>
   <arg name="display_image" default="true"/>
 
-  <node pkg="rov_visp" type="tag_vis" name="vs_node" output="screen">
-    <remap from="twist" to="$(arg twist_topic)"/>
-    <remap from="image_raw" to="$(arg camera_name)/$(arg image_topic)"/>
+  <group ns="$(arg robot)">
+    <!-- Static Transform from base to camera frame -->
+    <node pkg="tf2_ros" type="static_transform_publisher" name="base2camera" args="-0.33 0.12 0.16 -0.5 0.5 -0.5 0.5 bluerov_base bluerov_camera" />
+    
+    <node pkg="rov_visp" type="tag_vis" name="vs_node" output="screen">
+      <remap from="twist" to="$(arg robot)/twist"/>
+      <remap from="image_raw" to="$(arg robot)/$(arg camera_name)/$(arg image_topic)"/>
 
-    <param name="vs_lambda" type="double" value="$(arg vs_lambda)"/>
+      <param name="vs_lambda" type="double" value="$(arg vs_lambda)"/>
 
-    <param name="tag_id" type="int" value="$(arg tag_id)"/>
-    <param name="tag_size" type="double" value="$(arg tag_size)"/>
-    <param name="quad_decimate" type="double" value="$(arg quad_decimate)"/>
-    <param name="nb_threads" type="int" value="$(arg nb_threads)"/>
-    <param name="refine_edges" type="int" value="$(arg refine_edges)"/>
+      <param name="tag_id" type="int" value="$(arg tag_id)"/>
+      <param name="tag_size" type="double" value="$(arg tag_size)"/>
+      <param name="quad_decimate" type="double" value="$(arg quad_decimate)"/>
+      <param name="nb_threads" type="int" value="$(arg nb_threads)"/>
+      <param name="refine_edges" type="int" value="$(arg refine_edges)"/>
 
-    <param name="display_tagID" type="bool" value="$(arg display_tagID)"/>
-    <param name="display_image" type="bool" value="$(arg display_image)"/>
-  </node>
+      <param name="display_tagID" type="bool" value="$(arg display_tagID)"/>
+      <param name="display_image" type="bool" value="$(arg display_image)"/>
+
+      <param name="tf_camera_frame" type="string" value="$(arg camera_link)"/>
+      <param name="tf_base_frame" type="string" value="$(arg base_link)"/>
+    </node>
+  </group>
 
 </launch>

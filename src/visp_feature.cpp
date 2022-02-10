@@ -1,9 +1,11 @@
 #include <ros/ros.h>
 
 #include <iostream>
+#include <string>
 #include <geometry_msgs/Twist.h>
 #include <image_transport/image_transport.h>
 #include <cv_bridge/cv_bridge.h>
+#include <tf2_ros/transform_listener.h>
 
 #include <visp3/detection/vpDetectorAprilTag.h>
 #include <visp/vpImage.h> 
@@ -13,6 +15,7 @@
 #include <visp3/vs/vpServoDisplay.h>
 #include <visp3/visual_features/vpFeatureBuilder.h>
 #include <visp_bridge/camera.h>
+#include <visp_bridge/3dpose.h>
 
 class VIS
 {
@@ -23,6 +26,7 @@ class VIS
                      const sensor_msgs::CameraInfoConstPtr& camera_info);
   void displayAllTagID();
   int tagIdExist(int tagID);
+  void getBase2CameraTransform(vpHomogeneousMatrix &eMc);
 
  private:
   ros::NodeHandle nh_;
@@ -60,6 +64,9 @@ class VIS
   double quad_decimate_;
   int nb_threads_;
   int refine_edges_;
+
+  std::string baseFrame_;
+  std::string cameraFrame_;
 };
 
 VIS::VIS() : 
@@ -74,9 +81,27 @@ VIS::VIS() :
   nb_threads_{1},
   refine_edges_{1},
   streamStarted_(false),
+  baseFrame_("/base"),
+  cameraFrame_("/camera"),
   displayTagID_{true},
   displayImage_(true)
 {
+  // Resolve private parameters
+  nh_private_.param("tag_id", tagID_, tagID_);
+  nh_private_.param("tag_size", tagSize_, tagSize_);
+  nh_private_.param("quad_decimate", quad_decimate_, quad_decimate_);
+  nh_private_.param("nb_threads", nb_threads_, nb_threads_);
+  nh_private_.param("refine_edges", refine_edges_, refine_edges_);
+  nh_private_.param("vs_lambda", vsLambda_, vsLambda_);
+  nh_private_.param("display_image", displayImage_, displayImage_);
+  nh_private_.param("display_tagID", displayTagID_, displayTagID_);
+  nh_private_.param("tf_camera_frame", cameraFrame_, cameraFrame_);
+  nh_private_.param("tf_base_frame", baseFrame_, baseFrame_);
+  
+  // Remove the forward slash which comes from passing as ROS parameters
+  cameraFrame_.erase(0,1);
+  baseFrame_.erase(0,1);
+
   pubTwistRobot_  = nh_.advertise<geometry_msgs::Twist>("twist", 1);
 
   std::string transport_hint;
@@ -90,16 +115,7 @@ VIS::VIS() :
                           &VIS::imageCallback, this,
                           image_transport::TransportHints(transport_hint));
 
-  // Resolve private parameters
-  nh_private_.param("tag_id", tagID_, tagID_);
-  nh_private_.param("tag_size", tagSize_, tagSize_);
-  nh_private_.param("quad_decimate", quad_decimate_, quad_decimate_);
-  nh_private_.param("nb_threads", nb_threads_, nb_threads_);
-  nh_private_.param("refine_edges", refine_edges_, refine_edges_);
-  nh_private_.param("vs_lambda", vsLambda_, vsLambda_);
-  nh_private_.param("display_image", displayImage_, displayImage_);
-  nh_private_.param("display_tagID", displayTagID_, displayTagID_);
-
+  // Set tag detection parameters
   detector_.setAprilTagQuadDecimate(quad_decimate_);  // default: 1.0
   detector_.setAprilTagNbThreads(nb_threads_);        // default: 2
   detector_.setAprilTagRefineEdges(refine_edges_);    // default: 1
@@ -152,21 +168,32 @@ VIS::VIS() :
   }
 
   // Set velocity twist matrix to account for offset between base and camera frame
-  // Rotation from base to camera frame in zyx sequence
-  vpRzyxVector vec_rzyx(vpMath::rad(-90.f), 0, vpMath::rad(-90.f)) ;
-  vpRotationMatrix Rzyx(vec_rzyx);
+  vpHomogeneousMatrix eMc;
+  getBase2CameraTransform(eMc);
 
-  // Translation from base to camera frame
-  // TODO: get from TF instead
-  vpTranslationVector pvec_baseXcamera(-0.33, 0.12, 0.16);
-
-  // Put together into SE(3)
-  vpHomogeneousMatrix eMc( pvec_baseXcamera, Rzyx);
-  
   // Compute velocity twist matrix and set the jacobian
   // Since transform is static, only need to do it once
   vpVelocityTwistMatrix cVe(eMc.inverse());
   task_.set_cVe(cVe);
+}
+
+void VIS::getBase2CameraTransform(vpHomogeneousMatrix &eMc)
+{
+  tf2_ros::Buffer tfBuffer;
+  tf2_ros::TransformListener tfListener(tfBuffer);
+  ros::Duration(0.5).sleep();
+
+  geometry_msgs::TransformStamped transformStamped;
+  try{
+    transformStamped = tfBuffer.lookupTransform(baseFrame_, cameraFrame_,
+                              ros::Time(0));
+    eMc = visp_bridge::toVispHomogeneousMatrix(transformStamped.transform);
+  }
+  catch (tf2::TransformException &ex) {
+    ROS_WARN("%s",ex.what());
+    eMc.eye();
+    return;
+  }
 }
 
 void VIS::imageCallback (
