@@ -26,12 +26,14 @@ class VIS
 
  private:
   ros::NodeHandle nh_;
+  ros::NodeHandle nh_private_;
   ros::Publisher  pubTwistRobot_; // cmd_vel
   // ros::Timer controller_timer_;   // controller timer
 
   std::shared_ptr<image_transport::ImageTransport> it_;
   image_transport::CameraSubscriber camera_image_subscriber_;
   
+  // Tag marker parameters
   vpDetectorAprilTag::vpAprilTagFamily tagFamily_;
   vpDetectorAprilTag detector_;
   double tagSize_;
@@ -42,29 +44,40 @@ class VIS
 
   vpServo task_;
 
-  vpDisplayX display_;
+  // Visualization settings
   bool streamStarted_;
+  vpDisplayX display_;
   bool displayImage_;
+  bool displayTagID_;
 
   vpFeaturePoint p_[4], pd_[4];         // current and desired feature points
   std::vector<vpPoint> point_;          // current points in image plane (x,y)
   std::vector<vpImagePoint> img_pd_;  // desired points in image plane (x,y)
+
+  double vsLambda_;   // visual servo gain
+
+  // Tag detection parameters
+  double quad_decimate_;
+  int nb_threads_;
+  int refine_edges_;
 };
 
 VIS::VIS() : 
+  nh_private_("~"),
   tagFamily_(vpDetectorAprilTag::TAG_36h11),
   detector_(tagFamily_),
   tagSize_(0.096),
   tagID_(8),
-  // I_(480, 640, 0),
   I_(400, 640, 0),
-  // I_(960, 1280, 0),
+  vsLambda_(5.0),
+  quad_decimate_{1.0},
+  nb_threads_{1},
+  refine_edges_{1},
   streamStarted_(false),
-  displayImage_(true),
-  point_(4),
-  img_pd_(4)
+  displayTagID_{true},
+  displayImage_(true)
 {
-  pubTwistRobot_  = nh_.advertise<geometry_msgs::Twist>("/bluerov/twist", 1);
+  pubTwistRobot_  = nh_.advertise<geometry_msgs::Twist>("twist", 1);
 
   std::string transport_hint;
   nh_.param<std::string>("transport_hint", transport_hint, "raw");
@@ -72,17 +85,25 @@ VIS::VIS() :
   it_ = std::shared_ptr<image_transport::ImageTransport>(
       new image_transport::ImageTransport(nh_));
 
-  ///bluerov/vertical_camera/image_raw
-
   camera_image_subscriber_ =
-      it_->subscribeCamera("/bluerov/vertical_camera/image_raw", 1,
+      it_->subscribeCamera("image_raw", 1,
                           &VIS::imageCallback, this,
                           image_transport::TransportHints(transport_hint));
 
-  detector_.setAprilTagQuadDecimate(1.0); // default: 1.0
-  detector_.setAprilTagNbThreads(2);    // default: 2
-  detector_.setAprilTagRefineEdges(1);  // default: 1
-  detector_.setDisplayTag(true);
+  // Resolve private parameters
+  nh_private_.param("tag_id", tagID_, tagID_);
+  nh_private_.param("tag_size", tagSize_, tagSize_);
+  nh_private_.param("quad_decimate", quad_decimate_, quad_decimate_);
+  nh_private_.param("nb_threads", nb_threads_, nb_threads_);
+  nh_private_.param("refine_edges", refine_edges_, refine_edges_);
+  nh_private_.param("vs_lambda", vsLambda_, vsLambda_);
+  nh_private_.param("display_image", displayImage_, displayImage_);
+  nh_private_.param("display_tagID", displayTagID_, displayTagID_);
+
+  detector_.setAprilTagQuadDecimate(quad_decimate_);  // default: 1.0
+  detector_.setAprilTagNbThreads(nb_threads_);        // default: 2
+  detector_.setAprilTagRefineEdges(refine_edges_);    // default: 1
+  // detector_.setDisplayTag(displayTagID_);    // doesn't appear to make a difference?
 
   // controller_timer_ = nh_.createTimer(
   //                       ros::Duration(1/10.0), 
@@ -101,11 +122,14 @@ VIS::VIS() :
   // Visual servo task parameters
   task_.setServo(vpServo::EYEINHAND_CAMERA);
   task_.setInteractionMatrixType(vpServo::CURRENT);
-  task_.setLambda(5);
+  task_.setLambda(vsLambda_);
 
   // Desired camera position from object
   vpHomogeneousMatrix cdMo( vpTranslationVector(0, 0, tagSize_ * 5), // 3 times tag with along camera z axis
                             vpRotationMatrix( {1, 0, 0, 0, -1, 0, 0, 0, -1} ) );
+
+  point_.resize(4);
+  img_pd_.resize(4);
 
   // Set coordinates of features to be track by VIS 
   double tag_point = tagSize_/2;
@@ -130,10 +154,10 @@ VIS::VIS() :
   // Set velocity twist matrix to account for offset between base and camera frame
   // Rotation from base to camera frame in zyx sequence
   vpRzyxVector vec_rzyx(vpMath::rad(-90.f), 0, vpMath::rad(-90.f)) ;
-  //vpRzyxVector vec_rzyx(0, 0, 0) ;
   vpRotationMatrix Rzyx(vec_rzyx);
 
   // Translation from base to camera frame
+  // TODO: get from TF instead
   vpTranslationVector pvec_baseXcamera(-0.33, 0.12, 0.16);
 
   // Put together into SE(3)
@@ -154,6 +178,7 @@ void VIS::imageCallback (
     //Convert the image to Visp format
     I_ = visp_bridge::toVispImage(*image_rect);
     I_.resize(image_rect->height,image_rect->width);
+    ROS_INFO("Image size set to %d %d (width x height)",image_rect->height,image_rect->width);
     camInfo_ = visp_bridge::toVispCameraParameters(*camera_info);
 
     // Projection to determine where the desired features should lie on image plane
@@ -179,7 +204,7 @@ void VIS::imageCallback (
   if (displayImage_)
   {
     vpDisplay::display(I_);
-    displayAllTagID();
+    if (displayTagID_) displayAllTagID();
   }
 
   // Check if desired tagID exist

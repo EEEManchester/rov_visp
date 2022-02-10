@@ -2,7 +2,9 @@
 
 To run feature tracking ViSP (tracks the corners of the AprilTag):
 
-    rosrun rov_visp tag_vis  
+    roslaunch rov_visp vis.launch
+
+Tracking parameters such as tag ID, size, visual servo controller gain, can be set in the launch file. 
 
 To run pose tracking (6D pose estimated from AprilTag and tracked with a P controller):
 

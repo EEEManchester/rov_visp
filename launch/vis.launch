@@ -1,9 +1,42 @@
 <launch>
 
-  <node pkg="tf" type="static_transform_publisher" name="fake_base_camera" args="0.000100283301435 0.0590838380158 0 0 -0.7071068 0 0.7071068 /fake_base_link /camera_link 100" />
-  
-  <node pkg="simple_vis" type="main" name="vis_node" output="screen">
-    <remap from="/robot/cmd_vel" to="/mirrax/sim_cmd_vel"/>
+  <!-- <node pkg="tf" type="static_transform_publisher" name="fake_base_camera" args="0.000100283301435 0.0590838380158 0 0 -0.7071068 0 0.7071068 /fake_base_link /camera_link 100" /> -->
+
+  <!-- Publisher and subscribers -->
+  <arg name="camera_name" default="/bluerov/vertical_camera" />
+  <arg name="image_topic" default="image_raw" />
+  <arg name="twist_topic" default="/bluerov/twist"/>
+
+  <!-- Visual servo controller parameters -->
+  <arg name="vs_lambda" default="5.0"/>
+
+  <!-- April tag marker parameters -->
+  <arg name="tag_size" default="0.096"/>
+  <arg name="tag_id"   default="0"/>
+
+  <!-- April tag detection parameters -->
+  <arg name="quad_decimate" default="1.0"/>
+  <arg name="nb_threads"    default="1"/>
+  <arg name="refine_edges"  default="1"/>
+
+  <!-- Visualization -->
+  <arg name="display_tagID" default="true"/>
+  <arg name="display_image" default="true"/>
+
+  <node pkg="rov_visp" type="tag_vis" name="vs_node" output="screen">
+    <remap from="twist" to="$(arg twist_topic)"/>
+    <remap from="image_raw" to="$(arg camera_name)/$(arg image_topic)"/>
+
+    <param name="vs_lambda" type="double" value="$(arg vs_lambda)"/>
+
+    <param name="tag_id" type="int" value="$(arg tag_id)"/>
+    <param name="tag_size" type="double" value="$(arg tag_size)"/>
+    <param name="quad_decimate" type="double" value="$(arg quad_decimate)"/>
+    <param name="nb_threads" type="int" value="$(arg nb_threads)"/>
+    <param name="refine_edges" type="int" value="$(arg refine_edges)"/>
+
+    <param name="display_tagID" type="bool" value="$(arg display_tagID)"/>
+    <param name="display_image" type="bool" value="$(arg display_image)"/>
   </node>
 
 </launch>
